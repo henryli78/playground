@@ -3,6 +3,7 @@ import numpy as np
 from dataclasses import dataclass
 from enum import Enum
 from utils.logging import Log
+from utils.display import render_centered_text_lines
 
 
 class Player(Enum):
@@ -21,7 +22,7 @@ class TicTacToe:
         # pixels on screen
         self.px: int = 720
         self.px_unit: int = self.px // 6
-        self.line_width: int = 5
+        self.line_width: int = 8
         self.screen = pygame.display.set_mode((self.px, self.px))
         self.screen.fill("gray")
         self._render_gridlines()
@@ -35,6 +36,7 @@ class TicTacToe:
     def __enter__(self):
         pygame.init()
         self.font = pygame.font.Font(pygame.font.get_default_font(), 36)
+        pygame.display.set_caption("Tic Tac Toe")
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
@@ -90,27 +92,14 @@ class TicTacToe:
             self.render_X(grid_x, grid_y)
 
         if winner := self.check_any_win():
-            self.render_centered_text_lines([f"{winner.name} wins!", "Press R to restart"])
+            render_centered_text_lines(self.screen, [f"{winner.name} wins!", "Press R to restart"], self.font, "black")
             self._finished = True
             return
         elif not np.any(self.grid == 0):
-            self.render_centered_text_lines(["It's a tie!", "Press R to restart"])
+            render_centered_text_lines(self.screen, ["It's a tie!", "Press R to restart"], self.font, "black")
             self._finished = True
             return
         self.swap_players()
-
-    def render_centered_text_lines(self, lines: list[str], color="black"):
-        """Render multiple lines of text centered on the screen."""
-        rendered_lines = [self.font.render(line, True, color) for line in lines]
-        total_height = sum(line.get_height() for line in rendered_lines)
-
-        # Start Y so that the whole block is vertically centered
-        start_y = self.px / 2 - total_height / 2
-
-        for line in rendered_lines:
-            x = self.px / 2 - line.get_width() / 2
-            self.screen.blit(line, (x, start_y))
-            start_y += line.get_height()
 
     def render_O(self, x: int, y: int):
         pygame.draw.circle(
@@ -123,7 +112,10 @@ class TicTacToe:
 
     def render_X(self, x: int, y: int):
         center_x, center_y = self.grid_idx_to_center(x, y)
-        offset: int = int(self.px_unit * 0.9)
+
+        # need to normalize the size to scale
+        size_scalar = 0.85
+        offset: int = int(self.px_unit * size_scalar)
 
         pygame.draw.line(
             self.screen,
