@@ -55,9 +55,7 @@ class Ball:
         self.screen: pygame.Surface = screen
         self.radius: int = 10
         self.velocity: Velocity = Velocity(x=0, y=0)
-        self.hit_box: pygame.Rect = pygame.Rect(
-            self.x - self.radius, self.y - self.radius, 2 * self.radius, 2 * self.radius
-        )
+        self.hit_box: pygame.Rect = pygame.Rect(self.x, self.y, 2 * self.radius, 2 * self.radius)
 
     def draw(self):
         self.circle = pygame.draw.circle(self.screen, "red", (self.x, self.y), self.radius)
@@ -101,9 +99,74 @@ class Score:
     def increment_right(self):
         self.right_score += 1
 
+    def reset(self):
+        self.left_score = 0
+        self.right_score = 0
+
+
+class Settings:
+    def __init__(self, screen: pygame.Surface):
+        self.screen = screen
+        self.font = pygame.font.Font(pygame.font.get_default_font(), 36)
+        self.visible = False
+        self.background_color = (200, 200, 200, 128)  # Light gray with some transparency
+
+        # Menu item positions (centered, with spacing)
+        self.screen_center = (screen.get_width() / 2, screen.get_height() / 2)
+        self.line_height = 50
+
+        # Calculate positions for future menu items
+        self.positions = {
+            "speed": (self.screen_center[0], self.screen_center[1] - self.line_height),
+            "reset": (self.screen_center[0], self.screen_center[1]),  # Reserved for reset button
+            "mode": (self.screen_center[0], self.screen_center[1] + self.line_height),  # Reserved for PvP/PvCPU
+        }
+
+        # Button dimensions
+        self.button_width = 220
+        self.button_height = 40
+        self.reset_button = pygame.Rect(
+            self.positions["reset"][0] - self.button_width / 2,
+            self.positions["reset"][1] - self.button_height / 2,
+            self.button_width,
+            self.button_height,
+        )
+
+    def render(self, speed: int):
+        if not self.visible:
+            return
+
+        # Semi-transparent background
+        overlay = pygame.Surface(self.screen.get_size(), pygame.SRCALPHA)
+        overlay.fill(self.background_color)
+        self.screen.blit(overlay, (0, 0))
+
+        # Render current speed
+        speed_text = self.font.render(f"Ball Speed: {speed}", True, "black")
+        speed_rect = speed_text.get_rect(center=self.positions["speed"])
+        self.screen.blit(speed_text, speed_rect)
+
+        # Render reset button
+        pygame.draw.rect(self.screen, "white", self.reset_button)
+        pygame.draw.rect(self.screen, "black", self.reset_button, 5)  # border
+        reset_text = self.font.render("Reset Score", True, "black")
+        reset_rect = reset_text.get_rect(center=self.positions["reset"])
+        self.screen.blit(reset_text, reset_rect)
+
+        # Placeholder text for future options
+        coming_soon = self.font.render("More options coming soon...", True, (100, 100, 100))
+        coming_rect = coming_soon.get_rect(center=self.positions["mode"])
+        self.screen.blit(coming_soon, coming_rect)
+
+    def handle_click(self, pos: tuple[int, int]) -> bool:
+        """Returns True if reset button was clicked"""
+        if not self.visible:
+            return False
+        return self.reset_button.collidepoint(pos)
+
 
 class Pong:
-    def __init__(self, speed: int = 300, latest_winner: Orientation = Orientation.LEFT):
+    def __init__(self, speed: int = 450, latest_winner: Orientation = Orientation.LEFT):
         self.px_width: int = 720
         self.px_height: int = 480
         self.screen = pygame.display.set_mode((self.px_width, self.px_height))
@@ -114,6 +177,9 @@ class Pong:
         # Speed indicator properties
         self.speed_indicator: Optional[FadingText] = None
         self.speed_font = pygame.font.Font(pygame.font.get_default_font(), 36)
+
+        # Settings menu
+        self.settings = Settings(self.screen)
 
         self.init_objects()
 
@@ -181,16 +247,28 @@ class Pong:
                     self.ball.start(self.speed, self.latest_winner)
                 elif event.key == pygame.K_p:
                     self.paused = not self.paused
+                    self.settings.visible = False  # Hide settings when unpausing
+                elif event.key == pygame.K_o and self.paused:
+                    self.settings.visible = not self.settings.visible
                 elif event.unicode == "+":
                     old_speed = self.speed
                     self.speed += 30
                     self.ball.velocity.x *= self.speed / old_speed
-                    self.show_speed_indicator()
+                    if not self.settings.visible:
+                        self.show_speed_indicator()
                 elif event.unicode == "-":
                     old_speed = self.speed
                     self.speed -= 30
                     self.ball.velocity.x *= self.speed / old_speed
-                    self.show_speed_indicator()
+                    if not self.settings.visible:
+                        self.show_speed_indicator()
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                if self.paused:
+                    if self.settings.visible and self.settings.handle_click(event.pos):
+                        self.score.reset()
+                        self.restart()
+                    else:
+                        self.settings.visible = not self.settings.visible
 
         self.update_game_state()
         self.display_objects()
@@ -199,8 +277,18 @@ class Pong:
         if self.paused:
             pause_font = pygame.font.Font(pygame.font.get_default_font(), 48)
             pause_text = pause_font.render("PAUSED", True, "red")
-            text_rect = pause_text.get_rect(center=(self.px_width / 2, self.px_height / 2))
-            self.screen.blit(pause_text, text_rect)
+            pause_rect = pause_text.get_rect()
+            pause_rect.topright = (self.px_width, 0)
+            self.screen.blit(pause_text, pause_rect)
+
+            reminder_font = pygame.font.Font(pygame.font.get_default_font(), 24)
+            reminder_text = reminder_font.render("Press 'O' for settings", True, "black")
+            reminder_rect = reminder_text.get_rect()
+            reminder_rect.topright = (self.px_width, pause_rect.bottom + 5)  # 5px gap between texts
+            self.screen.blit(reminder_text, reminder_rect)
+
+            # Show settings menu if visible
+            self.settings.render(self.speed)
 
         # Render speed indicator with fade effect
         self.render_speed_indicator()
